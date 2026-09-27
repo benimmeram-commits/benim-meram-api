@@ -1,15 +1,28 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requireAuth } = require("../middleware/auth");
+const { REGIONS } = require("../constants");
+
+const MAX_MESSAGE_LENGTH = 2000;
 
 const router = express.Router();
 
 router.get("/conversations", requireAuth, async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT c.*, l.breed, l.sub_category
-     FROM conversations c LEFT JOIN listings l ON l.id = c.listing_id
+    `SELECT c.*, l.breed, l.sub_category,
+            ou.full_name AS other_name,
+            lm.body AS last_message,
+            COALESCE(lm.created_at, c.created_at) AS last_at
+     FROM conversations c
+     LEFT JOIN listings l ON l.id = c.listing_id
+     JOIN users ou ON ou.id = CASE WHEN c.buyer_id = $1 THEN c.seller_id ELSE c.buyer_id END
+     LEFT JOIN LATERAL (
+       SELECT body, created_at FROM messages m
+       WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1
+     ) lm ON true
      WHERE c.buyer_id = $1 OR c.seller_id = $1
-     ORDER BY c.created_at DESC`,
+     ORDER BY last_at DESC
+     LIMIT 200`,
     [req.userId]
   );
   res.json(rows);
@@ -18,6 +31,7 @@ router.get("/conversations", requireAuth, async (req, res) => {
 router.post("/conversations", requireAuth, async (req, res) => {
   const { listingId, otherUserId } = req.body;
   if (!otherUserId) return res.status(400).json({ error: "otherUserId gerekli." });
+  if (otherUserId === req.userId) return res.status(400).json({ error: "Kendinize mesaj gönderemezsiniz." });
 
   const existing = await pool.query(
     `SELECT * FROM conversations
@@ -52,8 +66,9 @@ router.get("/conversations/:id/messages", requireAuth, async (req, res) => {
 });
 
 router.post("/conversations/:id/messages", requireAuth, async (req, res) => {
-  const { body } = req.body;
-  if (!body || !body.trim()) return res.status(400).json({ error: "Mesaj boş olamaz." });
+  const { body } = req.body || {};
+  if (typeof body !== "string" || !body.trim()) return res.status(400).json({ error: "Mesaj boş olamaz." });
+  if (body.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: "Mesaj çok uzun." });
   const conv = await pool.query("SELECT * FROM conversations WHERE id = $1", [req.params.id]);
   if (conv.rows.length === 0) return res.status(404).json({ error: "Sohbet bulunamadı." });
   if (conv.rows[0].buyer_id !== req.userId && conv.rows[0].seller_id !== req.userId) {
@@ -67,6 +82,7 @@ router.post("/conversations/:id/messages", requireAuth, async (req, res) => {
 });
 
 router.get("/region-chat/:region", requireAuth, async (req, res) => {
+  if (!REGIONS.includes(req.params.region)) return res.status(404).json({ error: "Bölge bulunamadı." });
   const limit = Math.min(100, parseInt(req.query.limit) || 50);
   const { rows } = await pool.query(
     `SELECT m.*, u.full_name AS sender_name FROM region_chat_messages m
@@ -78,8 +94,10 @@ router.get("/region-chat/:region", requireAuth, async (req, res) => {
 });
 
 router.post("/region-chat/:region", requireAuth, async (req, res) => {
-  const { body } = req.body;
-  if (!body || !body.trim()) return res.status(400).json({ error: "Mesaj boş olamaz." });
+  if (!REGIONS.includes(req.params.region)) return res.status(404).json({ error: "Bölge bulunamadı." });
+  const { body } = req.body || {};
+  if (typeof body !== "string" || !body.trim()) return res.status(400).json({ error: "Mesaj boş olamaz." });
+  if (body.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: "Mesaj çok uzun." });
   const { rows } = await pool.query(
     `INSERT INTO region_chat_messages (region, sender_id, body) VALUES ($1,$2,$3) RETURNING *`,
     [req.params.region, req.userId, body.trim()]
