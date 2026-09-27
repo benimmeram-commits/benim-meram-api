@@ -2,6 +2,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notifyNearbySellers } = require("../lib/push");
+const { MAIN_CATEGORIES } = require("../constants");
 
 const router = express.Router();
 
@@ -13,14 +14,16 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", requireAuth, async (req, res) => {
-  const { budgetMax, desiredCategory, desiredBreed, lat, lng, locationLabel } = req.body;
-  if (!budgetMax || !desiredCategory) return res.status(400).json({ error: "Bütçe ve kategori gerekli." });
+  const { budgetMax, desiredCategory, desiredBreed, lat, lng, locationLabel } = req.body || {};
+  if (!(Number(budgetMax) > 0) || !desiredCategory) return res.status(400).json({ error: "Bütçe ve kategori gerekli." });
+  if (!MAIN_CATEGORIES.includes(desiredCategory)) return res.status(400).json({ error: "Geçerli bir kategori seçin." });
 
+  const toNum = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
   const { rows } = await pool.query(
-    `INSERT INTO buy_requests (buyer_id, budget_max, desired_category, desired_breed, location, location_label)
-     VALUES ($1,$2,$3,$4, CASE WHEN $5::float IS NOT NULL THEN ST_MakePoint($5,$6)::geography ELSE NULL END, $7)
+    `INSERT INTO buy_requests (buyer_id, budget_max, desired_category, desired_breed, lat, lng, location_label)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
      RETURNING *`,
-    [req.userId, budgetMax, desiredCategory, desiredBreed || null, lng || null, lat || null, locationLabel || null]
+    [req.userId, Number(budgetMax), desiredCategory, desiredBreed || null, toNum(lat), toNum(lng), locationLabel || null]
   );
   const created = rows[0];
 

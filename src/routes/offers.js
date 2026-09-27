@@ -5,12 +5,16 @@ const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
 
 router.post("/:listingId/offers", requireAuth, async (req, res) => {
-  const { amount } = req.body;
-  if (!amount) return res.status(400).json({ error: "Teklif tutarı gerekli." });
+  const { amount } = req.body || {};
+  if (!(Number(amount) > 0)) return res.status(400).json({ error: "Teklif tutarı gerekli." });
+
+  const listing = await pool.query("SELECT seller_id, status FROM listings WHERE id = $1", [req.params.listingId]);
+  if (listing.rows.length === 0 || listing.rows[0].status !== "yayinda") return res.status(404).json({ error: "İlan bulunamadı." });
+  if (listing.rows[0].seller_id === req.userId) return res.status(400).json({ error: "Kendi ilanınıza teklif veremezsiniz." });
 
   const { rows } = await pool.query(
     "INSERT INTO offers (listing_id, buyer_id, amount) VALUES ($1,$2,$3) RETURNING *",
-    [req.params.listingId, req.userId, amount]
+    [req.params.listingId, req.userId, Number(amount)]
   );
   res.status(201).json(rows[0]);
 });
