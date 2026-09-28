@@ -38,7 +38,6 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   attempts     integer NOT NULL DEFAULT 0,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS otp_codes_phone_idx ON otp_codes (phone_number, created_at DESC);
 
 -- ---------- İlanlar ----------
 CREATE TABLE IF NOT EXISTS listings (
@@ -60,12 +59,6 @@ CREATE TABLE IF NOT EXISTS listings (
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS listings_feed_idx     ON listings (status, created_at DESC);
-CREATE INDEX IF NOT EXISTS listings_category_idx ON listings (status, main_category, created_at DESC);
-CREATE INDEX IF NOT EXISTS listings_region_idx   ON listings (status, seller_region, created_at DESC);
-CREATE INDEX IF NOT EXISTS listings_city_idx     ON listings (status, seller_city);
-CREATE INDEX IF NOT EXISTS listings_seller_idx   ON listings (seller_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS listings_geo_idx      ON listings (lat, lng);
 
 -- ---------- Alım talepleri ----------
 CREATE TABLE IF NOT EXISTS buy_requests (
@@ -80,7 +73,6 @@ CREATE TABLE IF NOT EXISTS buy_requests (
   status           text NOT NULL DEFAULT 'acik',            -- acik | kapali
   created_at       timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS buy_requests_open_idx ON buy_requests (status, created_at DESC);
 
 -- ---------- Teklifler ----------
 CREATE TABLE IF NOT EXISTS offers (
@@ -92,7 +84,6 @@ CREATE TABLE IF NOT EXISTS offers (
   counter_amount numeric(12,2),
   created_at     timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS offers_listing_idx ON offers (listing_id, created_at DESC);
 
 -- ---------- Ödemeler ve abonelik ----------
 CREATE TABLE IF NOT EXISTS payments (
@@ -104,7 +95,6 @@ CREATE TABLE IF NOT EXISTS payments (
   provider_ref text,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS payments_user_idx ON payments (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,7 +103,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   expires_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (user_id, expires_at DESC);
 
 CREATE TABLE IF NOT EXISTS pricing_settings (
   id                 integer PRIMARY KEY CHECK (id = 1),
@@ -121,7 +110,6 @@ CREATE TABLE IF NOT EXISTS pricing_settings (
   per_listing_price  numeric(12,2) NOT NULL DEFAULT 75,
   commission_rate    numeric(5,4)  NOT NULL DEFAULT 0
 );
-INSERT INTO pricing_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- ---------- Mesajlaşma ----------
 CREATE TABLE IF NOT EXISTS conversations (
@@ -131,8 +119,6 @@ CREATE TABLE IF NOT EXISTS conversations (
   seller_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS conversations_buyer_idx  ON conversations (buyer_id);
-CREATE INDEX IF NOT EXISTS conversations_seller_idx ON conversations (seller_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -141,7 +127,6 @@ CREATE TABLE IF NOT EXISTS messages (
   body            text NOT NULL,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages (conversation_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS region_chat_messages (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -150,7 +135,6 @@ CREATE TABLE IF NOT EXISTS region_chat_messages (
   body       text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS region_chat_idx ON region_chat_messages (region, created_at DESC);
 
 -- ---------- Beğeni, favori, değerlendirme ----------
 CREATE TABLE IF NOT EXISTS likes (
@@ -168,7 +152,6 @@ CREATE TABLE IF NOT EXISTS favorites (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (listing_id, user_id)
 );
-CREATE INDEX IF NOT EXISTS favorites_user_idx ON favorites (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -179,7 +162,6 @@ CREATE TABLE IF NOT EXISTS reviews (
   comment          text,
   created_at       timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS reviews_user_idx ON reviews (reviewed_user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS reports (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -224,3 +206,145 @@ CREATE TABLE IF NOT EXISTS audit_log (
   target     text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ---------------------------------------------------------------------
+-- EKSİK SÜTUNLARI TAMAMLA
+-- ---------------------------------------------------------------------
+-- Veritabanında bu tabloların daha eski bir hali varsa, "CREATE TABLE IF
+-- NOT EXISTS" onları atlar ve yeni sütunlar eksik kalır. Aşağıdaki satırlar
+-- eksik sütunları ekler; zaten varsa hiçbir şey yapmaz.
+-- ---------------------------------------------------------------------
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_type text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_phone_verified boolean DEFAULT false NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status text DEFAULT 'yok' NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rating_avg numeric(3,2) DEFAULT 0 NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rating_count integer DEFAULT 0 NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS document_ref text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS document_photo_url text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS document_status text DEFAULT 'yok' NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS phone_number text;
+ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS code_hash text;
+ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS attempts integer DEFAULT 0 NOT NULL;
+ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS seller_id uuid;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS main_category text;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS sub_category text;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS breed text;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS price numeric(12,2);
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS age_months integer;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS weight_kg numeric(7,2);
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS seller_city text;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS seller_region text;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS lat double precision;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS lng double precision;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS media_urls jsonb DEFAULT '[]'::jsonb NOT NULL;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS status text DEFAULT 'yayinda' NOT NULL;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS buyer_id uuid;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS budget_max numeric(12,2);
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS desired_category text;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS desired_breed text;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS lat double precision;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS lng double precision;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS location_label text;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS status text DEFAULT 'acik' NOT NULL;
+ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS listing_id uuid;
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS buyer_id uuid;
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS amount numeric(12,2);
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS status text DEFAULT 'beklemede' NOT NULL;
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS counter_amount numeric(12,2);
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS kind text;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount numeric(12,2);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS status text DEFAULT 'beklemede' NOT NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_ref text;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS starts_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE pricing_settings ADD COLUMN IF NOT EXISTS subscription_price numeric(12,2) DEFAULT 1000 NOT NULL;
+ALTER TABLE pricing_settings ADD COLUMN IF NOT EXISTS per_listing_price numeric(12,2) DEFAULT 75 NOT NULL;
+ALTER TABLE pricing_settings ADD COLUMN IF NOT EXISTS commission_rate numeric(5,4) DEFAULT 0 NOT NULL;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS listing_id uuid;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS buyer_id uuid;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS seller_id uuid;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id uuid;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_id uuid;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS body text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE region_chat_messages ADD COLUMN IF NOT EXISTS region text;
+ALTER TABLE region_chat_messages ADD COLUMN IF NOT EXISTS sender_id uuid;
+ALTER TABLE region_chat_messages ADD COLUMN IF NOT EXISTS body text;
+ALTER TABLE region_chat_messages ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE likes ADD COLUMN IF NOT EXISTS listing_id uuid;
+ALTER TABLE likes ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE likes ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE favorites ADD COLUMN IF NOT EXISTS listing_id uuid;
+ALTER TABLE favorites ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE favorites ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS reviewer_id uuid;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS reviewed_user_id uuid;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS listing_id uuid;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS stars integer;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS comment text;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS reporter_id uuid;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS listing_id uuid;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS reason text;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS status text DEFAULT 'acik' NOT NULL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS tc_no text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS full_name text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS phone_number text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS password_hash text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS security_question text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS security_answer_hash text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS document_photo_url text;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS created_by uuid;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS active boolean DEFAULT true NOT NULL;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE admin_login_logs ADD COLUMN IF NOT EXISTS tc_no text;
+ALTER TABLE admin_login_logs ADD COLUMN IF NOT EXISTS full_name text;
+ALTER TABLE admin_login_logs ADD COLUMN IF NOT EXISTS role text;
+ALTER TABLE admin_login_logs ADD COLUMN IF NOT EXISTS success boolean;
+ALTER TABLE admin_login_logs ADD COLUMN IF NOT EXISTS reason text;
+ALTER TABLE admin_login_logs ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_name text;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_role text;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS action text;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS target text;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
+
+-- ---------------------------------------------------------------------
+-- İNDEKSLER VE BAŞLANGIÇ VERİLERİ
+-- ---------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS otp_codes_phone_idx ON otp_codes (phone_number, created_at DESC);
+CREATE INDEX IF NOT EXISTS listings_feed_idx     ON listings (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS listings_category_idx ON listings (status, main_category, created_at DESC);
+CREATE INDEX IF NOT EXISTS listings_region_idx   ON listings (status, seller_region, created_at DESC);
+CREATE INDEX IF NOT EXISTS listings_city_idx     ON listings (status, seller_city);
+CREATE INDEX IF NOT EXISTS listings_seller_idx   ON listings (seller_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS listings_geo_idx      ON listings (lat, lng);
+CREATE INDEX IF NOT EXISTS buy_requests_open_idx ON buy_requests (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS offers_listing_idx ON offers (listing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS payments_user_idx ON payments (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (user_id, expires_at DESC);
+INSERT INTO pricing_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+CREATE INDEX IF NOT EXISTS conversations_buyer_idx  ON conversations (buyer_id);
+CREATE INDEX IF NOT EXISTS conversations_seller_idx ON conversations (seller_id);
+CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages (conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS region_chat_idx ON region_chat_messages (region, created_at DESC);
+CREATE INDEX IF NOT EXISTS favorites_user_idx ON favorites (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS reviews_user_idx ON reviews (reviewed_user_id, created_at DESC);
