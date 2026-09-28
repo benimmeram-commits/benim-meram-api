@@ -327,6 +327,85 @@ ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS action text;
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS target text;
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now() NOT NULL;
 
+-- Eski tablolarda sütunların varsayılan değerleri farklı olabilir (ör. ilan durumu); bizimkileri uygula
+ALTER TABLE users ALTER COLUMN is_phone_verified SET DEFAULT false;
+ALTER TABLE users ALTER COLUMN subscription_status SET DEFAULT 'yok';
+ALTER TABLE users ALTER COLUMN rating_avg SET DEFAULT 0;
+ALTER TABLE users ALTER COLUMN rating_count SET DEFAULT 0;
+ALTER TABLE users ALTER COLUMN document_status SET DEFAULT 'yok';
+ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE otp_codes ALTER COLUMN attempts SET DEFAULT 0;
+ALTER TABLE otp_codes ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE listings ALTER COLUMN media_urls SET DEFAULT '[]'::jsonb;
+ALTER TABLE listings ALTER COLUMN status SET DEFAULT 'yayinda';
+ALTER TABLE listings ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE listings ALTER COLUMN updated_at SET DEFAULT now();
+ALTER TABLE buy_requests ALTER COLUMN status SET DEFAULT 'acik';
+ALTER TABLE buy_requests ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE offers ALTER COLUMN status SET DEFAULT 'beklemede';
+ALTER TABLE offers ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE payments ALTER COLUMN status SET DEFAULT 'beklemede';
+ALTER TABLE payments ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE subscriptions ALTER COLUMN starts_at SET DEFAULT now();
+ALTER TABLE subscriptions ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE pricing_settings ALTER COLUMN subscription_price SET DEFAULT 1000;
+ALTER TABLE pricing_settings ALTER COLUMN per_listing_price SET DEFAULT 75;
+ALTER TABLE pricing_settings ALTER COLUMN commission_rate SET DEFAULT 0;
+ALTER TABLE conversations ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE messages ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE region_chat_messages ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE likes ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE favorites ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE reviews ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE reports ALTER COLUMN status SET DEFAULT 'acik';
+ALTER TABLE reports ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE admin_users ALTER COLUMN active SET DEFAULT true;
+ALTER TABLE admin_users ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE admin_login_logs ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE audit_log ALTER COLUMN created_at SET DEFAULT now();
+
+-- ---------------------------------------------------------------------
+-- ESKİ TABLOLARDAN KALAN KURALLARI TEMİZLE
+-- ---------------------------------------------------------------------
+-- Eski bir denemeden kalan tablolarda bizim kullanmadığımız değer
+-- kısıtlamaları (CHECK) ve artık doldurulmayan zorunlu sütunlar olabilir.
+-- Bunlar yeni kayıtların eklenmesini engellediği için kaldırılır.
+-- Veriler SİLİNMEZ; sadece kurallar gevşetilir.
+-- ---------------------------------------------------------------------
+DO $$
+DECLARE r record;
+BEGIN
+  -- Bizim tanımlamadığımız CHECK kurallarını kaldır
+  FOR r IN
+    SELECT rel.relname AS tbl, con.conname AS con
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = rel.relnamespace
+    WHERE n.nspname = 'public' AND con.contype = 'c'
+      AND rel.relname = ANY (ARRAY['admin_login_logs', 'admin_users', 'audit_log', 'buy_requests', 'conversations', 'favorites', 'likes', 'listings', 'messages', 'offers', 'otp_codes', 'payments', 'pricing_settings', 'region_chat_messages', 'reports', 'reviews', 'subscriptions', 'users'])
+      AND con.conname <> ALL (ARRAY['listings_price_check', 'pricing_settings_id_check', 'reviews_stars_check'])
+  LOOP
+    EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', r.tbl, r.con);
+    RAISE NOTICE '[kurulum] eski kural kaldırıldı: %.%', r.tbl, r.con;
+  END LOOP;
+
+  -- Bizim kullanmadığımız ama zorunlu (NOT NULL) olan eski sütunları isteğe bağlı yap
+  FOR r IN
+    SELECT table_name AS tbl, column_name AS col
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = ANY (ARRAY['admin_login_logs', 'admin_users', 'audit_log', 'buy_requests', 'conversations', 'favorites', 'likes', 'listings', 'messages', 'offers', 'otp_codes', 'payments', 'pricing_settings', 'region_chat_messages', 'reports', 'reviews', 'subscriptions', 'users'])
+      AND is_nullable = 'NO'
+      AND (table_name || '.' || column_name) <> ALL (ARRAY['admin_login_logs.created_at', 'admin_login_logs.full_name', 'admin_login_logs.id', 'admin_login_logs.reason', 'admin_login_logs.role', 'admin_login_logs.success', 'admin_login_logs.tc_no', 'admin_users.active', 'admin_users.created_at', 'admin_users.created_by', 'admin_users.document_photo_url', 'admin_users.full_name', 'admin_users.id', 'admin_users.password_hash', 'admin_users.phone_number', 'admin_users.role', 'admin_users.security_answer_hash', 'admin_users.security_question', 'admin_users.tc_no', 'audit_log.action', 'audit_log.actor_name', 'audit_log.actor_role', 'audit_log.created_at', 'audit_log.id', 'audit_log.target', 'buy_requests.budget_max', 'buy_requests.buyer_id', 'buy_requests.created_at', 'buy_requests.desired_breed', 'buy_requests.desired_category', 'buy_requests.id', 'buy_requests.lat', 'buy_requests.lng', 'buy_requests.location_label', 'buy_requests.status', 'conversations.buyer_id', 'conversations.created_at', 'conversations.id', 'conversations.listing_id', 'conversations.seller_id', 'favorites.created_at', 'favorites.id', 'favorites.listing_id', 'favorites.user_id', 'likes.created_at', 'likes.id', 'likes.listing_id', 'likes.user_id', 'listings.age_months', 'listings.breed', 'listings.created_at', 'listings.description', 'listings.id', 'listings.lat', 'listings.lng', 'listings.main_category', 'listings.media_urls', 'listings.price', 'listings.seller_city', 'listings.seller_id', 'listings.seller_region', 'listings.status', 'listings.sub_category', 'listings.updated_at', 'listings.weight_kg', 'messages.body', 'messages.conversation_id', 'messages.created_at', 'messages.id', 'messages.sender_id', 'offers.amount', 'offers.buyer_id', 'offers.counter_amount', 'offers.created_at', 'offers.id', 'offers.listing_id', 'offers.status', 'otp_codes.attempts', 'otp_codes.code_hash', 'otp_codes.created_at', 'otp_codes.expires_at', 'otp_codes.id', 'otp_codes.phone_number', 'payments.amount', 'payments.created_at', 'payments.id', 'payments.kind', 'payments.provider_ref', 'payments.status', 'payments.user_id', 'pricing_settings.commission_rate', 'pricing_settings.id', 'pricing_settings.per_listing_price', 'pricing_settings.subscription_price', 'region_chat_messages.body', 'region_chat_messages.created_at', 'region_chat_messages.id', 'region_chat_messages.region', 'region_chat_messages.sender_id', 'reports.created_at', 'reports.id', 'reports.listing_id', 'reports.reason', 'reports.reporter_id', 'reports.status', 'reviews.comment', 'reviews.created_at', 'reviews.id', 'reviews.listing_id', 'reviews.reviewed_user_id', 'reviews.reviewer_id', 'reviews.stars', 'subscriptions.created_at', 'subscriptions.expires_at', 'subscriptions.id', 'subscriptions.starts_at', 'subscriptions.user_id', 'users.created_at', 'users.document_photo_url', 'users.document_ref', 'users.document_status', 'users.email', 'users.full_name', 'users.id', 'users.is_phone_verified', 'users.phone_number', 'users.profile_type', 'users.rating_avg', 'users.rating_count', 'users.subscription_status'])
+  LOOP
+    EXECUTE format('ALTER TABLE %I ALTER COLUMN %I DROP NOT NULL', r.tbl, r.col);
+    RAISE NOTICE '[kurulum] eski zorunlu sütun serbest bırakıldı: %.%', r.tbl, r.col;
+  END LOOP;
+END $$;
+
+-- Giriş için gereken tekillik kuralı (eski tabloda yoksa eklenir)
+CREATE UNIQUE INDEX IF NOT EXISTS users_phone_number_uniq ON users (phone_number);
+
 -- ---------------------------------------------------------------------
 -- İNDEKSLER VE BAŞLANGIÇ VERİLERİ
 -- ---------------------------------------------------------------------
